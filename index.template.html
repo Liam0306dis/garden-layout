@@ -1,0 +1,1254 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Magic Garden Layout Planner</title>
+<style>
+  :root {
+    --bg:#0d1010; --panel:#151a18; --panel2:#1c231f; --line:rgba(255,255,255,.1);
+    --text:#eef2ef; --dim:#a7b0aa; --faint:#758078; --accent:#b89cff;
+    --grass:#486440; --grass-dark:#354d32; --dirt:#755035; --dirt-line:#926b48;
+    --wood:#ae7c48; --wood-line:#d2a065; --bad:#f87171; --good:#65d69a;
+  }
+  * { box-sizing:border-box; }
+  .sr-only { position:absolute; width:1px; height:1px; padding:0; margin:-1px; overflow:hidden; clip:rect(0,0,0,0); white-space:nowrap; border:0; }
+  body { margin:0; padding:20px 14px 44px; background:var(--bg); color:var(--text); font-family:system-ui,-apple-system,"Segoe UI",sans-serif; line-height:1.45; }
+  button, input, textarea { font:inherit; }
+  button { color:inherit; }
+  .wrap { width:100%; max-width:1680px; margin:0 auto; }
+  .topbar { position:relative; display:flex; min-height:54px; align-items:start; justify-content:center; gap:16px; margin:0 304px 14px 248px; text-align:center; }
+  h1 { margin:0; font-size:22px; font-weight:700; }
+  .sub { margin:3px 0 0; color:var(--dim); font-size:12px; }
+  .counts { position:absolute; top:0; right:0; display:flex; gap:16px; flex-wrap:wrap; color:var(--dim); font-size:11px; text-align:left; }
+  .counts b { display:block; color:var(--text); font-size:16px; }
+  .toolbar { display:flex; flex-wrap:wrap; gap:8px; align-items:center; justify-content:center; margin:0 304px 0 248px; padding:10px 0 14px; border-bottom:1px solid var(--line); }
+  .btn { min-height:36px; padding:7px 11px; border:1px solid var(--line); border-radius:7px; background:var(--panel2); cursor:pointer; }
+  .btn:hover:not(:disabled) { border-color:var(--accent); }
+  .btn:disabled { color:var(--faint); cursor:not-allowed; }
+  .btn.active { border-color:var(--accent); background:rgba(184,156,255,.15); }
+  .btn.danger:hover { border-color:var(--bad); }
+  .file-label { display:inline-flex; align-items:center; }
+  .file-label input { position:absolute; width:1px; height:1px; opacity:0; }
+  .status { flex:1 0 100%; min-width:0; color:var(--dim); font-size:12px; text-align:center; }
+  .status.good { color:var(--good); }
+  .status.bad { color:#fca5a5; }
+  .workspace { display:grid; grid-template-columns:230px minmax(0,1fr) 286px; gap:18px; align-items:start; padding-top:18px; }
+  .farm-column { min-width:0; }
+  .farm-stage { position:relative; width:100%; padding:4.5% 3.5%; background:var(--grass); border:1px solid #5e7954; border-radius:8px; box-shadow:inset 0 0 0 5px var(--grass-dark); }
+  .farm { display:grid; grid-template-columns:repeat(23,minmax(0,1fr)); grid-template-rows:repeat(12,minmax(0,1fr)); width:100%; aspect-ratio:23 / 12; isolation:isolate; }
+  .tile { position:relative; min-width:0; min-height:0; margin:0; padding:0; border:1px solid; border-radius:2px; cursor:pointer; overflow:visible; appearance:none; }
+  .tile.dirt { background:var(--dirt); border-color:var(--dirt-line); box-shadow:inset 0 1px rgba(255,255,255,.08); }
+  .tile.boardwalk { background:var(--wood); border-color:var(--wood-line); box-shadow:inset 0 -2px rgba(91,54,27,.22); }
+  .tile:hover, .tile:focus-visible { z-index:10000 !important; outline:2px solid var(--accent); outline-offset:-2px; }
+  .tile.source { z-index:10001 !important; outline:3px solid var(--good); outline-offset:-3px; }
+  .tile.wrong { animation:wrong .28s ease; }
+  @keyframes wrong { 50% { background:rgba(248,113,113,.45); } }
+  .placed-sprite { position:absolute; z-index:2; left:50%; bottom:3%; width:145%; height:175%; object-fit:contain; object-position:center bottom; pointer-events:none; transform:translateX(-50%) scale(var(--sprite-scale,1)); transform-origin:bottom center; image-rendering:auto; filter:drop-shadow(0 2px 1px rgba(0,0,0,.35)); }
+  .tile.decor-placed .placed-sprite { width:160%; height:190%; }
+  .plant-base { position:absolute; z-index:2; max-width:none; object-fit:fill; pointer-events:none; image-rendering:auto; filter:drop-shadow(0 2px 1px rgba(0,0,0,.35)); }
+  .plant-base.focused-stack, .fruit-sprite.focused-stack { filter:drop-shadow(0 0 2px var(--accent)) drop-shadow(0 0 3px var(--accent)); }
+  .fruit-anchor { position:absolute; z-index:3; width:100%; height:100%; pointer-events:none; transform-origin:0 0; }
+  .fruit-stack { position:absolute; left:0; top:0; pointer-events:none; }
+  .fruit-sprite { position:absolute; inset:0; width:100%; height:100%; object-fit:contain; filter:drop-shadow(0 1px 1px rgba(0,0,0,.45)); }
+  .mutation-effect-frame { position:absolute; z-index:3; pointer-events:none; }
+  .mutation-effect { position:absolute; max-width:none; pointer-events:none; object-fit:contain; }
+  .tile-label { position:absolute; z-index:9000; right:1px; bottom:0; display:none; padding:0 2px; border-radius:2px; background:rgba(0,0,0,.65); color:#fff; font-size:7px; }
+  .show-slots .tile-label { display:block; }
+  .farm-key { display:flex; flex-wrap:wrap; gap:14px; margin-top:10px; color:var(--dim); font-size:11px; }
+  .swatch { display:inline-flex; align-items:center; gap:5px; }
+  .swatch::before { content:""; width:12px; height:12px; border-radius:2px; border:1px solid var(--line); }
+  .swatch.dirt::before { background:var(--dirt); border-color:var(--dirt-line); }
+  .swatch.wood::before { background:var(--wood); border-color:var(--wood-line); }
+  .palette, .details-panel { position:sticky; top:12px; display:flex; min-width:0; flex-direction:column; padding:14px; background:var(--panel); border:1px solid var(--line); border-radius:8px; }
+  .details-panel { max-height:calc(100vh - 24px); overflow-y:auto; }
+  .details-panel h2 { margin:0 0 10px; font-size:14px; }
+  .palette-head { display:flex; align-items:center; justify-content:space-between; gap:8px; margin-bottom:10px; }
+  .palette h2 { margin:0; font-size:14px; }
+  .selected-name { color:var(--dim); font-size:10px; text-align:right; }
+  .tabs { display:grid; grid-template-columns:1fr 1fr; gap:3px; margin-bottom:9px; padding:3px; background:var(--panel2); border-radius:7px; }
+  .tab { min-width:0; padding:7px 5px; border:0; border-radius:5px; background:transparent; color:var(--dim); cursor:pointer; }
+  .tab.active { background:var(--accent); color:#111; font-weight:700; }
+  .search { width:100%; height:36px; margin-bottom:10px; padding:7px 9px; border:1px solid var(--line); border-radius:7px; background:var(--panel2); color:var(--text); outline:none; }
+  .search:focus { border-color:var(--accent); }
+  .items { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:7px; max-height:640px; overflow-y:auto; padding-right:3px; }
+  .item { position:relative; min-width:0; height:92px; padding:6px 5px 24px; border:1px solid var(--line); border-radius:7px; background:var(--panel2); cursor:pointer; }
+  .item:hover { border-color:var(--accent); }
+  .item.active { border-color:var(--accent); box-shadow:inset 0 0 0 1px var(--accent); }
+  .item img { width:100%; height:60px; object-fit:contain; pointer-events:none; filter:drop-shadow(0 2px 1px rgba(0,0,0,.3)); }
+  .item span { position:absolute; left:5px; right:5px; bottom:5px; overflow:hidden; color:var(--text); font-size:10px; line-height:1.15; text-align:center; text-overflow:ellipsis; white-space:nowrap; }
+  .empty-results { grid-column:1 / -1; padding:20px 4px; color:var(--dim); font-size:12px; text-align:center; }
+  .palette-controls[hidden] { display:none; }
+  .mutation-editor { min-height:290px; }
+  .palette-controls { order:2; }
+  .mutation-title { margin:0 0 2px; font-size:14px; }
+  .mutation-sub { margin:0 0 12px; color:var(--dim); font-size:11px; }
+  .mutation-list { display:grid; grid-template-columns:1fr; gap:6px; }
+  .mutation-option { display:flex; min-width:0; align-items:center; gap:7px; padding:7px; border:1px solid var(--line); border-radius:6px; background:var(--panel2); cursor:pointer; }
+  .mutation-option:has(input:checked) { border-color:var(--accent); background:rgba(184,156,255,.12); }
+  .mutation-option input { flex:0 0 auto; accent-color:var(--accent); }
+  .mutation-option img { flex:0 0 auto; width:22px; height:22px; object-fit:contain; }
+  .mutation-option span { min-width:0; overflow:hidden; font-size:11px; text-overflow:ellipsis; white-space:nowrap; }
+  .plant-size { margin:0 0 13px; padding-bottom:12px; border-bottom:1px solid var(--line); }
+  .plant-size[hidden] { display:none; }
+  .plant-size-head { display:flex; align-items:center; justify-content:space-between; gap:10px; margin-bottom:6px; font-size:12px; }
+  .plant-size output { color:var(--accent); font-weight:700; }
+  .plant-size input { display:block; width:100%; accent-color:var(--accent); cursor:pointer; }
+  .plant-size-limits { display:flex; justify-content:space-between; margin-top:2px; color:var(--faint); font-size:9px; }
+  .stack-editor { display:grid; grid-template-columns:34px minmax(0,1fr) 34px 34px 34px; gap:5px; margin:0 0 10px; }
+  .stack-editor[hidden] { display:none; }
+  .stack-editor.draft { grid-template-columns:minmax(0,1fr) 34px 34px; }
+  .stack-button[hidden] { display:none; }
+  .stack-position { display:flex; min-width:0; align-items:center; justify-content:center; color:var(--dim); font-size:11px; text-align:center; }
+  .stack-button { min-width:0; height:32px; padding:0; border:1px solid var(--line); border-radius:6px; background:var(--panel2); color:var(--text); cursor:pointer; font-size:18px; }
+  .stack-button:hover:not(:disabled) { border-color:var(--accent); }
+  .stack-button:disabled { color:var(--faint); cursor:not-allowed; }
+  .load-dialog { width:min(680px,calc(100vw - 24px)); max-height:calc(100vh - 24px); padding:0; overflow:hidden; border:1px solid var(--line); border-radius:8px; background:var(--panel); color:var(--text); box-shadow:0 20px 70px rgba(0,0,0,.6); }
+  .load-dialog::backdrop { background:rgba(0,0,0,.72); }
+  .dialog-head { display:flex; align-items:center; justify-content:space-between; gap:12px; padding:14px 16px; border-bottom:1px solid var(--line); }
+  .dialog-head h2 { margin:0; font-size:17px; }
+  .dialog-close { width:34px; height:34px; padding:0; border:1px solid transparent; border-radius:6px; background:transparent; color:var(--dim); cursor:pointer; font-size:24px; line-height:1; }
+  .dialog-close:hover { border-color:var(--line); color:var(--text); }
+  .dialog-body { max-height:calc(100vh - 94px); padding:16px; overflow-y:auto; }
+  .load-steps { margin:0 0 12px; padding-left:22px; color:var(--dim); font-size:13px; }
+  .load-steps li + li { margin-top:5px; }
+  .load-steps strong { color:var(--text); }
+  .console-code { display:block; width:100%; min-height:190px; padding:10px; resize:vertical; border:1px solid var(--line); border-radius:6px; background:#0b0e0d; color:#dbe5de; font:11px/1.45 ui-monospace,SFMono-Regular,Consolas,monospace; outline:none; }
+  .console-code:focus { border-color:var(--accent); }
+  .dialog-actions { display:flex; flex-wrap:wrap; align-items:center; gap:8px; margin-top:10px; }
+  .dialog-note { margin:12px 0 0; color:var(--dim); font-size:11px; }
+  .dialog-status { flex:1 1 180px; color:var(--dim); font-size:12px; }
+  .dialog-status.good { color:var(--good); }
+  .dialog-status.bad { color:#fca5a5; }
+  @media (max-width:1100px) {
+    body { padding:14px 9px 38px; }
+    .topbar, .toolbar { margin-left:0; margin-right:0; }
+    .workspace { grid-template-columns:1fr; }
+    .details-panel { grid-row:1; }
+    .farm-column { grid-row:2; }
+    .palette { grid-row:3; }
+    .palette, .details-panel { position:static; }
+    .details-panel { max-height:none; overflow:visible; }
+    .mutation-list { grid-template-columns:repeat(2,minmax(0,1fr)); }
+    .items { grid-template-columns:repeat(4,minmax(0,1fr)); max-height:340px; overflow-y:auto; }
+    .item { height:84px; }
+    .item img { height:53px; }
+  }
+  @media (max-width:560px) {
+    .topbar { align-items:center; flex-direction:column; }
+    .counts { position:static; width:100%; justify-content:space-between; text-align:center; }
+    .toolbar { gap:6px; }
+    .btn { min-height:34px; padding:6px 9px; font-size:12px; }
+    .status { order:20; width:100%; min-width:0; margin-left:0; text-align:center; }
+    .farm-stage { padding:4% 2.5%; }
+    .items { grid-template-columns:repeat(3,minmax(0,1fr)); max-height:300px; }
+    .placed-sprite { width:165%; height:195%; }
+    .mutation-list { grid-template-columns:repeat(2,minmax(0,1fr)); }
+    .dialog-head, .dialog-body { padding-left:12px; padding-right:12px; }
+    .console-code { min-height:150px; }
+  }
+</style>
+</head>
+<body>
+<main class="wrap">
+  <header class="topbar">
+    <div>
+      <h1>Magic Garden Layout Planner</h1>
+      <p class="sub">Plan all 200 dirt plots and 76 boardwalk tiles with real game artwork.</p>
+    </div>
+    <div class="counts" aria-live="polite">
+      <span><b id="plantCount">0</b>plants</span>
+      <span><b id="decorCount">0 / 276</b>decorations</span>
+    </div>
+  </header>
+
+  <div class="toolbar" aria-label="Layout tools">
+    <button id="placeMode" class="btn active" type="button">Place</button>
+    <button id="moveMode" class="btn" type="button">Move</button>
+    <button id="mutateMode" class="btn" type="button">Plant details</button>
+    <button id="eraseMode" class="btn" type="button">Erase</button>
+    <button id="flip" class="btn" type="button" disabled>Flip</button>
+    <button id="undo" class="btn" type="button" disabled>Undo</button>
+    <button id="redo" class="btn" type="button" disabled>Redo</button>
+    <button id="slotLabels" class="btn" type="button">Slot IDs</button>
+    <button id="openLoad" class="btn" type="button">Load JSON</button>
+    <button id="save" class="btn" type="button">Save JSON</button>
+    <button id="clear" class="btn danger" type="button">Clear</button>
+    <span id="status" class="status" role="status">Select a plant or decoration.</span>
+  </div>
+
+  <div class="workspace">
+    <aside class="details-panel" aria-label="Plant details">
+      <h2>Plant details</h2>
+      <div id="mutationEditor" class="mutation-editor">
+        <h3 id="mutationTitle" class="mutation-title">Select a plant</h3>
+        <p class="mutation-sub">Set its size and choose the mutations shown on its fruit.</p>
+        <div id="plantStackEditor" class="stack-editor" hidden>
+          <button id="previousStackPlant" class="stack-button" type="button" aria-label="Previous plant" title="Previous plant">&lsaquo;</button>
+          <span id="plantStackPosition" class="stack-position"></span>
+          <button id="nextStackPlant" class="stack-button" type="button" aria-label="Next plant" title="Next plant">&rsaquo;</button>
+          <button id="removeStackPlant" class="stack-button" type="button" aria-label="Remove this plant" title="Remove this plant">&minus;</button>
+          <button id="addStackPlant" class="stack-button" type="button" aria-label="Duplicate this plant" title="Duplicate this plant">+</button>
+        </div>
+        <div id="plantSizeEditor" class="plant-size" hidden>
+          <div class="plant-size-head"><label for="plantScale">Plant size</label><output id="plantScaleValue" for="plantScale">1.00x</output></div>
+          <input id="plantScale" type="range" min="1" max="1" step="0.05" value="1">
+          <div class="plant-size-limits"><span>1.00x</span><span id="plantScaleMax">1.00x max</span></div>
+        </div>
+        <div id="mutationList" class="mutation-list"></div>
+      </div>
+    </aside>
+
+    <section class="farm-column" aria-label="Garden layout">
+      <div class="farm-stage"><div id="farm" class="farm"></div></div>
+      <div class="farm-key">
+        <span class="swatch dirt">Dirt: plants or decorations</span>
+        <span class="swatch wood">Boardwalk: decorations only</span>
+        <span>Drag placed items to move or swap them.</span>
+      </div>
+    </section>
+
+    <aside class="palette">
+      <div class="palette-head">
+        <h2>Palette</h2>
+        <span id="selectedName" class="selected-name">Nothing selected</span>
+      </div>
+      <div id="paletteControls" class="palette-controls">
+        <div class="tabs" role="tablist" aria-label="Palette type">
+          <button id="plantsTab" class="tab active" type="button" role="tab" aria-selected="true">Plants</button>
+          <button id="decorTab" class="tab" type="button" role="tab" aria-selected="false">Decorations</button>
+        </div>
+        <label for="search" class="sr-only">Search palette</label>
+        <input id="search" class="search" type="search" placeholder="Search plants" autocomplete="off">
+        <div id="items" class="items"></div>
+      </div>
+    </aside>
+  </div>
+</main>
+
+<dialog id="loadDialog" class="load-dialog" aria-labelledby="loadTitle">
+  <div class="dialog-head">
+    <h2 id="loadTitle">Load your farm</h2>
+    <button id="closeLoad" class="dialog-close" type="button" aria-label="Close" title="Close">&times;</button>
+  </div>
+  <div class="dialog-body">
+    <ol class="load-steps">
+      <li>Open <strong>Magic Garden</strong> in your browser and wait for your farm to load.</li>
+      <li>Press <strong>F12</strong>, open the <strong>Console</strong>, paste the code below, and press Enter.</li>
+      <li>Attach the downloaded <strong>magicgarden-farm.txt</strong> file here.</li>
+    </ol>
+    <textarea id="farmGrabCode" class="console-code" readonly spellcheck="false" aria-label="Farm export console code"></textarea>
+    <div class="dialog-actions">
+      <button id="copyFarmCode" class="btn" type="button">Copy code</button>
+      <label class="btn file-label">Attach farm file<input id="loadFile" type="file" accept="application/json,text/plain,.json,.txt"></label>
+      <span id="loadDialogStatus" class="dialog-status" role="status"></span>
+    </div>
+    <p class="dialog-note">Plants are loaded onto dirt tiles. Decorations keep their dirt or boardwalk positions.</p>
+  </div>
+</dialog>
+
+<script type="text/plain" id="farmGrabScript">
+// Magic Garden farm data grab. Paste into the browser console (F12).
+// Downloads magicgarden-farm.txt for the layout planner.
+(async () => {
+  const w = window;
+  async function getState() {
+    let data = w.playerSlot?.data || w._wsState?.mySlot?.data || w.myGarden;
+    if (data?.garden) return data;
+    const conn = w.MagicCircle_RoomConnection;
+    if (conn?.subscribeToPatches) {
+      console.log('Grabbing room state...');
+      return await new Promise(resolve => {
+        let done = false;
+        conn.subscribeToPatches((_patches, full) => {
+          if (done) return;
+          const slots = full?.child?.data?.userSlots || [];
+          let playerId = null;
+          try {
+            playerId = new URL(conn.currentWebSocket.url).searchParams.get('playerId');
+            if (playerId && playerId[0] === '"') playerId = JSON.parse(playerId);
+          } catch (_) {}
+          const slot = slots.find(entry => entry && (entry.playerId === playerId || entry.data?.playerId === playerId)) || slots.find(entry => entry?.data?.garden);
+          if (slot?.data) { done = true; resolve(slot.data); }
+        });
+      });
+    }
+    return null;
+  }
+  const data = await getState();
+  if (!data?.garden) { console.error('[GardenLayout] No garden data found. Is the game loaded?'); return; }
+  const garden = {};
+  for (const [tileId, tile] of Object.entries(data.garden.tileObjects || {})) {
+    if (tile.objectType === 'plant' && tile.slots?.length) {
+      garden[tileId] = {
+        objectType:'plant',
+        species:tile.species,
+        slots:tile.slots.map(slot => ({ species:slot.species || tile.species, targetScale:slot.targetScale || 1, mutations:slot.mutations || [] }))
+      };
+    } else if (tile.objectType === 'decor' && tile.decorId) {
+      garden[tileId] = { objectType:'decor', decorId:tile.decorId };
+    }
+  }
+  const boardwalk = {};
+  for (const [tileId, tile] of Object.entries(data.garden.boardwalkTileObjects || {})) {
+    if (tile.objectType !== 'decor' || !tile.decorId) continue;
+    boardwalk[tileId] = { decorId:tile.decorId };
+  }
+  const output = { garden, boardwalk };
+  const url = URL.createObjectURL(new Blob([JSON.stringify(output)], { type:'text/plain' }));
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = 'magicgarden-farm.txt';
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+  console.log(`Downloaded magicgarden-farm.txt - ${Object.keys(garden).length} plants and ${Object.keys(boardwalk).length} decorations.`);
+})();
+</script>
+
+<script>
+const CATALOG = /*__CATALOG__*/;
+const MUTATIONS = /*__MUTATIONS__*/;
+const STORAGE_KEY = 'magic-garden-layout-v1';
+const MUTATION_EXCLUSIVE_GROUPS = [
+  ['Gold', 'Rainbow'],
+  ['Wet', 'Chilled', 'Frozen', 'Thunderstruck', 'Thundercharged'],
+  ['Dawnlit', 'Ambershine', 'Dawncharged', 'Ambercharged'],
+];
+const catalogByKey = new Map(CATALOG.map(item => [item.kind + ':' + item.id, item]));
+const farm = document.getElementById('farm');
+const cells = { dirt:[], boardwalk:[] };
+let layout = { dirt:Array(200).fill(null), boardwalk:Array(76).fill(null) };
+let selected = null;
+let placementDraft = null;
+let selectedKind = 'plant';
+let mode = 'place';
+let moveSource = null;
+let focusedTile = null;
+let focusedPlantIndex = 0;
+let history = [];
+let future = [];
+
+const $ = id => document.getElementById(id);
+const clone = value => JSON.parse(JSON.stringify(value));
+const placementKind = (tileKind, placement) => tileKind === 'boardwalk' || placement?.kind === 'decor' ? 'decor' : 'plant';
+const placementKey = (kind, placement) => placementKind(kind, placement) + ':' + placement.id;
+const canPlaceOnTile = (itemKind, tileKind) => itemKind === 'decor' || tileKind === 'dirt';
+const STACK_OFFSETS = [[0,0],[-16,9],[16,9],[-24,-5],[24,-5],[-8,-13],[8,-13],[-30,18],[30,18],[0,20],[-31,-18],[31,-18],[-17,27],[17,27],[0,-27]];
+
+function plantEntries(placement) {
+  if (!placement || placement.kind === 'decor') return [];
+  return [
+    { id:placement.id, mutations:placement.mutations || [], targetScale:placement.targetScale },
+    ...(Array.isArray(placement.stack) ? placement.stack : []),
+  ];
+}
+
+function replacePlantEntry(placement, index, next) {
+  if (index === 0) {
+    placement.id = next.id;
+    placement.mutations = next.mutations || [];
+    placement.targetScale = next.targetScale;
+  } else placement.stack[index - 1] = next;
+}
+
+function placementFromPlantEntries(entries) {
+  if (!entries.length) return null;
+  const [first, ...stack] = entries;
+  const item = catalogByKey.get('plant:' + first.id);
+  return { ...first, ...(item?.stackFamily ? { stack } : {}) };
+}
+
+function stackDetails(placement) {
+  const entries = plantEntries(placement);
+  const first = catalogByKey.get('plant:' + entries[0]?.id);
+  return { entries, family:first?.stackFamily || null, capacity:first?.stackCapacity || 1 };
+}
+
+function newPlantEntry(id) {
+  return { id, mutations:[], targetScale:normalizedTargetScale(id) };
+}
+
+function dirtPosition(index) {
+  const row = Math.floor(index / 20) + 2;
+  const localCol = index % 20;
+  return { row, col:localCol < 10 ? localCol + 2 : localCol + 3 };
+}
+
+function boardwalkPosition(index) {
+  if (index < 23) return { row:1, col:index + 1 };
+  if (index < 53) {
+    const offset = index - 23;
+    return { row:Math.floor(offset / 3) + 2, col:[1, 12, 23][offset % 3] };
+  }
+  return { row:12, col:index - 52 };
+}
+
+function makeCell(kind, index, position) {
+  const button = document.createElement('button');
+  button.type = 'button';
+  button.className = 'tile ' + kind;
+  button.style.gridRow = position.row;
+  button.style.gridColumn = position.col;
+  button.dataset.depth = String(position.row * 100);
+  button.dataset.kind = kind;
+  button.dataset.index = index;
+  button.addEventListener('click', () => handleTileClick(kind, index));
+  button.addEventListener('dragstart', event => handleDragStart(event, kind, index));
+  button.addEventListener('dragover', event => event.preventDefault());
+  button.addEventListener('drop', event => handleDrop(event, kind, index));
+  cells[kind].push(button);
+  farm.appendChild(button);
+}
+
+for (let i = 0; i < 200; i++) makeCell('dirt', i, dirtPosition(i));
+for (let i = 0; i < 76; i++) makeCell('boardwalk', i, boardwalkPosition(i));
+
+function orderedMutations(ids) {
+  const order = new Map(MUTATIONS.map((mutation, index) => [mutation.id, index]));
+  const unique = normalizeMutationSelection(ids);
+  unique.sort((a, b) => order.get(a) - order.get(b));
+  return unique;
+}
+
+function visibleMutations(ids) {
+  const unique = orderedMutations(ids);
+  return unique.includes('Gold') ? ['Gold'] : unique.includes('Rainbow') ? ['Rainbow'] : unique;
+}
+
+function normalizeMutationSelection(ids) {
+  const known = new Set(MUTATIONS.map(mutation => mutation.id));
+  const selected = [];
+  for (const id of ids || []) {
+    if (!known.has(id)) continue;
+    for (const group of MUTATION_EXCLUSIVE_GROUPS) {
+      if (group.includes(id)) {
+        for (let index = selected.length - 1; index >= 0; index--) {
+          if (group.includes(selected[index])) selected.splice(index, 1);
+        }
+      }
+    }
+    if (!selected.includes(id)) selected.push(id);
+  }
+  return MUTATIONS.map(mutation => mutation.id).filter(id => selected.includes(id));
+}
+
+function normalizedTargetScale(plantId, value) {
+  const item = catalogByKey.get('plant:' + plantId);
+  const maximum = Math.max(1, Number(item?.maxScale) || 1);
+  const numeric = Number(value);
+  const scale = value === undefined || value === null || value === '' || !Number.isFinite(numeric) ? maximum : numeric;
+  return Math.round(Math.min(maximum, Math.max(1, scale)) * 100) / 100;
+}
+
+function normalizedPlantEntry(entry) {
+  return {
+    id:entry.id,
+    mutations:normalizeMutationSelection(entry.mutations),
+    targetScale:normalizedTargetScale(entry.id, entry.targetScale),
+  };
+}
+
+function normalizedPlantPlacement(placement) {
+  const first = normalizedPlantEntry(placement);
+  const item = catalogByKey.get('plant:' + first.id);
+  if (!item?.stackFamily) return first;
+  const stack = (Array.isArray(placement.stack) ? placement.stack : [])
+    .map(normalizedPlantEntry)
+    .filter(entry => catalogByKey.get('plant:' + entry.id)?.stackFamily === item.stackFamily)
+    .slice(0, item.stackCapacity - 1);
+  return { ...first, stack };
+}
+
+const mutationRenderCache = new Map();
+const mutationColors = {
+  Gold:['rgb(235,200,0)',.7], Wet:['rgb(50,180,200)',.25], Chilled:['rgb(100,160,210)',.45],
+  Frozen:['rgb(100,130,220)',.5], Thunderstruck:['rgb(16,141,163)',.4], Dawnlit:['rgb(209,70,231)',.5],
+  Ambershine:['rgb(190,100,40)',.5], Dawncharged:['rgb(140,80,200)',.5], Ambercharged:['rgb(170,60,25)',.5],
+  Thundercharged:['rgb(60,200,165)',.45],
+};
+const mutationEffectOffsets = {
+  Banana:{ x:.6, y:.68 }, Beet:{ y:.65 }, Carrot:{ x:{ crop:.5 }, y:{ plant:.6, crop:.42 } },
+  Sunflower:{ y:.5 }, Ube:{ y:.5 }, Starweaver:{ y:.5 }, Clover:{ y:.3 }, FourLeafClover:{ y:.3 },
+  FavaBean:{ y:.25 }, BurrosTail:{ y:.2 }, Rose:{ y:.16 }, Saffron:{ x:.52, y:.22 }, Cardoon:{ y:.8 },
+  Daisy:{ y:.21 }, PurpleDaisy:{ y:.21 }, Pepper:{ x:.6 }, Eggplant:{ x:.57 }, Milkcap:{ y:.3 },
+  Snowdrop:{ x:.3, y:.23, scale:.5 }, SnowdropDouble:{ x:.27, y:.21, scale:.5 },
+  Dawnbreaker:{ y:{ plant:.25, crop:.13 } }, Leek:{ y:{ plant:.55 }, scale:{ plant:.7 } },
+};
+const lunarMutationEffects = new Set(['Dawnlit', 'Ambershine', 'Dawncharged', 'Ambercharged']);
+const mutationById = new Map(MUTATIONS.map(mutation => [mutation.id, mutation]));
+
+function modeValue(value, mode) {
+  return typeof value === 'number' ? value : value?.[mode];
+}
+
+function appendMutationEffects(parent, item, mode, mutationIds, width, height, anchorX, anchorY) {
+  const config = mutationEffectOffsets[item.id] || {};
+  const tallSingle = item.harvestType === 'Single' && height > width * 1.5;
+  const x = modeValue(config.x, mode) ?? anchorX;
+  const y = modeValue(config.y, mode) ?? (tallSingle ? anchorY : .4);
+  const speciesScale = modeValue(config.scale, mode) ?? 1;
+  const scaleFactor = Math.min(.75, Math.min(width, height) / 256) * speciesScale;
+  for (const id of orderedMutations(mutationIds).filter(id => id !== 'Gold' && id !== 'Rainbow')) {
+    const mutation = mutationById.get(id);
+    if (!mutation?.sprite || !mutation.spriteWidth || !mutation.spriteHeight) continue;
+    const pixelRatio = mutation.spritePixelRatio || 1;
+    const effect = document.createElement('img');
+    effect.className = 'mutation-effect';
+    effect.src = mutation.sprite;
+    effect.alt = '';
+    effect.style.left = (x * 100) + '%';
+    effect.style.top = (y * 100) + '%';
+    effect.style.width = ((mutation.spriteWidth / pixelRatio) * scaleFactor / width * 100) + '%';
+    effect.style.height = ((mutation.spriteHeight / pixelRatio) * scaleFactor / height * 100) + '%';
+    effect.style.transform = 'translate(' + (-(mutation.spriteAnchorX ?? .5) * 100) + '%,' + (-(mutation.spriteAnchorY ?? .5) * 100) + '%)';
+    effect.style.zIndex = lunarMutationEffects.has(id) ? '10' : '4';
+    parent.appendChild(effect);
+  }
+}
+
+function loadSprite(source) {
+  return new Promise((resolve, reject) => {
+    const image = new Image();
+    image.onload = () => resolve(image);
+    image.onerror = reject;
+    image.src = source;
+  });
+}
+
+function rainbowGradient(context, width, height, isTall) {
+  const angle = ((isTall ? -90 : 40) - 90) * Math.PI / 180;
+  const centerX = width / 2;
+  const centerY = height / 2;
+  const radius = Math.abs(Math.cos(angle)) * width / 2 + Math.abs(Math.sin(angle)) * height / 2;
+  const gradient = context.createLinearGradient(
+    centerX - Math.cos(angle) * radius,
+    centerY - Math.sin(angle) * radius,
+    centerX + Math.cos(angle) * radius,
+    centerY + Math.sin(angle) * radius,
+  );
+  ['#ff1744','#ff9100','#ffea00','#00e676','#2979ff','#d500f9'].forEach((color, index, colors) => {
+    gradient.addColorStop(index / (colors.length - 1), color);
+  });
+  return gradient;
+}
+
+async function mutatedSprite(source, mutationIds, isTall, spriteKey) {
+  const mutations = visibleMutations(mutationIds);
+  if (!mutations.length) return source;
+  const key = spriteKey + '|' + mutations.join(',') + '|' + (isTall ? 'tall' : 'crop');
+  if (mutationRenderCache.has(key)) return mutationRenderCache.get(key);
+  const pending = (async () => {
+    const base = await loadSprite(source);
+    const canvas = document.createElement('canvas');
+    canvas.width = base.naturalWidth;
+    canvas.height = base.naturalHeight;
+    const context = canvas.getContext('2d');
+    context.drawImage(base, 0, 0);
+    for (const id of mutations) {
+      const layer = document.createElement('canvas');
+      layer.width = canvas.width;
+      layer.height = canvas.height;
+      const layerContext = layer.getContext('2d');
+      layerContext.drawImage(base, 0, 0);
+      layerContext.save();
+      if (id === 'Rainbow') {
+        layerContext.globalCompositeOperation = 'color';
+        layerContext.fillStyle = rainbowGradient(layerContext, canvas.width, canvas.height, isTall);
+        layerContext.fillRect(0, 0, canvas.width, canvas.height);
+      } else if (mutationColors[id]) {
+        layerContext.globalCompositeOperation = 'source-atop';
+        layerContext.globalAlpha = mutationColors[id][1];
+        layerContext.fillStyle = mutationColors[id][0];
+        layerContext.fillRect(0, 0, canvas.width, canvas.height);
+      }
+      layerContext.restore();
+      layerContext.globalCompositeOperation = 'destination-in';
+      layerContext.drawImage(base, 0, 0);
+      context.drawImage(layer, 0, 0);
+    }
+    return canvas.toDataURL('image/png');
+  })();
+  mutationRenderCache.set(key, pending);
+  return pending;
+}
+
+function applyMutatedSprite(image, source, mutationIds, isTall, spriteKey) {
+  image.src = source;
+  mutatedSprite(source, mutationIds, isTall, spriteKey).then(result => { image.src = result; }).catch(() => {});
+}
+
+function setAnchoredGeometry(element, width, height, anchorX, anchorY, offsetX = 0, offsetY = 0) {
+  element.style.left = (50 + offsetX) + '%';
+  element.style.top = (50 + offsetY) + '%';
+  element.style.width = (width / 256 * 100) + '%';
+  element.style.height = (height / 256 * 100) + '%';
+  element.style.transform = 'translate(' + (-anchorX * 100) + '%,' + (-anchorY * 100) + '%)';
+}
+
+function renderCell(kind, index) {
+  const cell = cells[kind][index];
+  const depth = Number(cell.dataset.depth) || 0;
+  const placement = layout[kind][index];
+  cell.innerHTML = '';
+  cell.classList.toggle('decor-placed', Boolean(placement) && placementKind(kind, placement) === 'decor');
+  cell.draggable = Boolean(placement);
+  cell.classList.toggle('source', Boolean(moveSource && moveSource.kind === kind && moveSource.index === index));
+  const slot = document.createElement('span');
+  slot.className = 'tile-label';
+  slot.textContent = String(index);
+  cell.appendChild(slot);
+  if (!placement) {
+    cell.setAttribute('aria-label', (kind === 'dirt' ? 'Dirt' : 'Boardwalk') + ' slot ' + index + ', empty');
+    return;
+  }
+  const item = catalogByKey.get(placementKey(kind, placement));
+  if (!item) {
+    cell.setAttribute('aria-label', 'Slot ' + index + ', unknown ' + placement.id);
+    return;
+  }
+  if (item.kind === 'decor') {
+    const image = document.createElement('img');
+    image.className = 'placed-sprite';
+    image.style.zIndex = String(depth + 2);
+    image.src = item.sprite;
+    image.alt = '';
+    image.style.transform = 'translateX(-50%)' + (placement.flipH ? ' scaleX(-1)' : '');
+    cell.appendChild(image);
+    cell.setAttribute('aria-label', (kind === 'dirt' ? 'Dirt' : 'Boardwalk') + ' slot ' + index + ', ' + item.name);
+    return;
+  }
+
+  const entries = plantEntries(placement);
+  entries.forEach((plantPlacement, plantIndex) => {
+    const plantItem = catalogByKey.get('plant:' + plantPlacement.id);
+    if (!plantItem) return;
+    const spread = STACK_OFFSETS[plantIndex % STACK_OFFSETS.length];
+    const offsetX = entries.length > 1 ? spread[0] : 0;
+    const offsetY = entries.length > 1 ? spread[1] : 0;
+    const plantRatio = plantItem.plantPixelRatio || 1;
+    const targetScale = normalizedTargetScale(plantPlacement.id, plantPlacement.targetScale);
+    const plantWidth = (plantItem.spriteWidth || 256) / plantRatio;
+    const plantHeight = (plantItem.spriteHeight || 256) / plantRatio;
+    const singleVisualScale = plantItem.harvestType === 'Single' ? (plantItem.cropVisualScale || 1) : 1;
+    const displayPlantWidth = plantWidth * singleVisualScale * (plantItem.harvestType === 'Single' ? targetScale : 1);
+    const displayPlantHeight = plantHeight * singleVisualScale * (plantItem.harvestType === 'Single' ? targetScale : 1);
+    const plantAnchorX = plantItem.plantAnchorX ?? .5;
+    const plantAnchorY = plantItem.plantAnchorY ?? .5;
+    const image = document.createElement('img');
+    image.className = 'plant-base' + (mode === 'mutate' && focusedTile?.kind === 'dirt' && focusedTile.index === index && focusedPlantIndex === plantIndex ? ' focused-stack' : '');
+    image.style.zIndex = String(depth + 2 + plantIndex * 20);
+    image.alt = '';
+    applyMutatedSprite(image, plantItem.sprite, plantItem.harvestType === 'Single' ? plantPlacement.mutations : [], plantItem.plantIsTall, 'plant:' + plantItem.id);
+    setAnchoredGeometry(image, displayPlantWidth, displayPlantHeight, plantAnchorX, plantAnchorY, offsetX, offsetY);
+    cell.appendChild(image);
+    if (plantItem.harvestType === 'Single') {
+      const effectFrame = document.createElement('span');
+      effectFrame.className = 'mutation-effect-frame';
+      effectFrame.style.zIndex = String(depth + 3 + plantIndex * 20);
+      setAnchoredGeometry(effectFrame, displayPlantWidth, displayPlantHeight, plantAnchorX, plantAnchorY, offsetX, offsetY);
+      appendMutationEffects(effectFrame, plantItem, 'plant', plantPlacement.mutations, plantWidth, plantHeight, plantAnchorX, plantAnchorY);
+      cell.appendChild(effectFrame);
+    }
+    if (plantItem.harvestType !== 'Single' && plantItem.cropSprite) {
+      const offsets = plantItem.slotOffsets.length ? plantItem.slotOffsets : [{ x:0, y:0 }];
+      const baseOffsetX = (.5 - plantAnchorX) * plantWidth;
+      const baseOffsetY = (.5 - plantAnchorY) * plantHeight;
+      offsets.forEach((offset, slotIndex) => {
+        const cropItem = offset.speciesOverride ? (catalogByKey.get('plant:' + offset.speciesOverride) || plantItem) : plantItem;
+        const cropRatio = cropItem.cropPixelRatio || 1;
+        const cropVisualScale = cropItem.cropVisualScale || 1;
+        const cropWidth = (cropItem.cropWidth || 128) / cropRatio * cropVisualScale;
+        const cropHeight = (cropItem.cropHeight || 128) / cropRatio * cropVisualScale;
+        const cropOffsetX = (cropItem.cropOffsetX || 0) / cropRatio * cropVisualScale;
+        const cropOffsetY = (cropItem.cropOffsetY || 0) / cropRatio * cropVisualScale;
+        const cropAnchorX = cropItem.cropAnchorX ?? .5;
+        const cropAnchorY = cropItem.cropAnchorY ?? 1;
+        const anchor = document.createElement('span');
+        anchor.className = 'fruit-anchor';
+        anchor.style.left = (50 + offsetX + ((Number(offset.x) || 0) * 256 + baseOffsetX + cropOffsetX) / 256 * 100) + '%';
+        anchor.style.top = (50 + offsetY + ((Number(offset.y) || 0) * 256 + baseOffsetY + cropOffsetY) / 256 * 100) + '%';
+        anchor.style.transform = 'rotate(' + (Number(offset.rotation) || 0) + 'deg)';
+        anchor.style.zIndex = String(depth + 3 + plantIndex * 20 + slotIndex);
+        const stack = document.createElement('span');
+        stack.className = 'fruit-stack';
+        const displayCropScale = (cropItem.cropScale || 1) * targetScale;
+        stack.style.width = (cropWidth * displayCropScale / 256 * 100) + '%';
+        stack.style.height = (cropHeight * displayCropScale / 256 * 100) + '%';
+        stack.style.transform = 'translate(' + (-cropAnchorX * 100) + '%,' + (-cropAnchorY * 100) + '%)';
+        const fruit = document.createElement('img');
+        fruit.className = 'fruit-sprite' + (mode === 'mutate' && focusedTile?.kind === 'dirt' && focusedTile.index === index && focusedPlantIndex === plantIndex ? ' focused-stack' : '');
+        fruit.alt = '';
+        applyMutatedSprite(fruit, cropItem.cropSprite, plantPlacement.mutations, cropItem.cropIsTall, 'crop:' + cropItem.id);
+        stack.appendChild(fruit);
+        appendMutationEffects(stack, cropItem, 'crop', plantPlacement.mutations, (cropItem.cropWidth || 128) / cropRatio, (cropItem.cropHeight || 128) / cropRatio, cropAnchorX, cropAnchorY);
+        anchor.appendChild(stack);
+        cell.appendChild(anchor);
+      });
+    }
+  });
+  cell.setAttribute('aria-label', 'Dirt slot ' + index + ', ' + entries.length + ' plant' + (entries.length === 1 ? '' : 's'));
+}
+
+function renderBoard() {
+  for (let i = 0; i < 200; i++) renderCell('dirt', i);
+  for (let i = 0; i < 76; i++) renderCell('boardwalk', i);
+  updateBoardControls();
+  renderMutationEditor();
+}
+
+function updateBoardControls() {
+  const dirtPlants = layout.dirt.reduce((count, placement) => count + (placement && placementKind('dirt', placement) === 'plant' ? plantEntries(placement).length : 0), 0);
+  const dirtDecor = layout.dirt.filter(placement => placement && placementKind('dirt', placement) === 'decor').length;
+  $('plantCount').textContent = String(dirtPlants);
+  $('decorCount').textContent = (dirtDecor + layout.boardwalk.filter(Boolean).length) + ' / 276';
+  const focusedPlacement = focusedTile && layout[focusedTile.kind]?.[focusedTile.index];
+  $('flip').disabled = !(focusedPlacement && placementKind(focusedTile.kind, focusedPlacement) === 'decor');
+  updateHistoryButtons();
+}
+
+function updateHistoryButtons() {
+  $('undo').disabled = history.length === 0;
+  $('redo').disabled = future.length === 0;
+}
+
+function setStatus(message, state) {
+  const element = $('status');
+  element.textContent = message;
+  element.className = 'status' + (state ? ' ' + state : '');
+}
+
+function persist() {
+  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(layout)); } catch (_) {}
+}
+
+function mutate(action, redrawTile = null) {
+  history.push(JSON.stringify(layout));
+  if (history.length > 60) history.shift();
+  future = [];
+  action();
+  persist();
+  if (redrawTile) {
+    renderCell(redrawTile.kind, redrawTile.index);
+    updateBoardControls();
+    renderMutationEditor();
+  } else renderBoard();
+}
+
+function setMode(nextMode) {
+  const previousMode = mode;
+  const previousMoveSource = moveSource;
+  mode = nextMode;
+  moveSource = null;
+  ['place','move','mutate','erase'].forEach(name => $(name + 'Mode').classList.toggle('active', name === mode));
+  $('paletteControls').hidden = false;
+  if (previousMoveSource) renderCell(previousMoveSource.kind, previousMoveSource.index);
+  if (previousMode !== nextMode && focusedTile && (previousMode === 'mutate' || nextMode === 'mutate')) renderCell(focusedTile.kind, focusedTile.index);
+  updateBoardControls();
+  renderMutationEditor();
+  setStatus(mode === 'move' ? 'Select a source tile, then its destination.' : mode === 'mutate' ? 'Select a planted dirt tile.' : mode === 'erase' ? 'Select tiles to clear.' : selected ? 'Placing ' + selected.name + '.' : 'Select a plant or decoration.');
+}
+
+function flashWrong(kind, index, message) {
+  const cell = cells[kind][index];
+  cell.classList.remove('wrong');
+  void cell.offsetWidth;
+  cell.classList.add('wrong');
+  setStatus(message, 'bad');
+}
+
+function placePaletteItem(item, kind, index) {
+  if (!canPlaceOnTile(item.kind, kind)) {
+    flashWrong(kind, index, 'Plants can only use dirt tiles.');
+    return false;
+  }
+  const draft = item.kind === 'plant' && placementDraft?.id === item.id ? placementDraft : { ...newPlantEntry(item.id), quantity:1 };
+  const quantity = item.stackFamily ? Math.max(1, Math.min(item.stackCapacity, Number(draft.quantity) || 1)) : 1;
+  const entriesToPlace = Array.from({ length:quantity }, () => normalizedPlantEntry(draft));
+  const existing = layout[kind][index];
+  if (item.kind === 'plant' && item.stackFamily && existing && placementKind(kind, existing) === 'plant') {
+    const details = stackDetails(existing);
+    if (details.family === item.stackFamily) {
+      if (details.entries.length + entriesToPlace.length > details.capacity) {
+        flashWrong(kind, index, 'This patch is full (' + details.capacity + ' plants).');
+        return false;
+      }
+      focusedPlantIndex = details.entries.length;
+      mutate(() => {
+        layout[kind][index].stack ||= [];
+        layout[kind][index].stack.push(...entriesToPlace.map(clone));
+      }, { kind, index });
+      setStatus(item.name + ' added to the patch (' + (details.entries.length + entriesToPlace.length) + ' / ' + details.capacity + ').', 'good');
+      return true;
+    }
+  }
+  focusedPlantIndex = 0;
+  mutate(() => {
+    layout[kind][index] = item.kind === 'plant'
+      ? placementFromPlantEntries(entriesToPlace)
+      : { kind:'decor', id:item.id, flipH:false };
+  }, { kind, index });
+  setStatus(item.name + ' placed.', 'good');
+  return true;
+}
+
+function handleTileClick(kind, index) {
+  const previousFocusedTile = focusedTile;
+  if (!focusedTile || focusedTile.kind !== kind || focusedTile.index !== index) focusedPlantIndex = 0;
+  focusedTile = { kind, index };
+  if (mode === 'mutate') {
+    if (previousFocusedTile && (previousFocusedTile.kind !== kind || previousFocusedTile.index !== index)) renderCell(previousFocusedTile.kind, previousFocusedTile.index);
+    renderCell(kind, index);
+    updateBoardControls();
+    renderMutationEditor();
+    if (kind !== 'dirt' || !layout.dirt[index] || placementKind('dirt', layout.dirt[index]) !== 'plant') { setStatus('Select a dirt tile containing a plant.', 'bad'); return; }
+    setStatus('Editing mutations for this plant.', 'good');
+    return;
+  }
+  if (mode === 'erase') {
+    if (layout[kind][index]) mutate(() => { layout[kind][index] = null; }, { kind, index });
+    setStatus('Tile cleared.', 'good');
+    return;
+  }
+  if (mode === 'move') {
+    if (!moveSource) {
+      if (!layout[kind][index]) { setStatus('That tile is empty.', 'bad'); return; }
+      moveSource = { kind, index };
+      renderCell(kind, index);
+      setStatus('Choose a ' + (kind === 'dirt' ? 'dirt' : 'boardwalk') + ' destination.');
+      return;
+    }
+    const sourcePlacement = layout[moveSource.kind][moveSource.index];
+    const targetPlacement = layout[kind][index];
+    const sourceItemKind = placementKind(moveSource.kind, sourcePlacement);
+    const targetItemKind = targetPlacement ? placementKind(kind, targetPlacement) : null;
+    if (!canPlaceOnTile(sourceItemKind, kind) || (targetItemKind && !canPlaceOnTile(targetItemKind, moveSource.kind))) {
+      flashWrong(kind, index, 'Plants can only use dirt tiles.');
+      return;
+    }
+    const source = moveSource;
+    moveSource = null;
+    if (source.kind !== kind || source.index !== index) mutate(() => {
+      [layout[source.kind][source.index], layout[kind][index]] = [layout[kind][index], layout[source.kind][source.index]];
+    });
+    else renderCell(kind, index);
+    setStatus('Item moved.', 'good');
+    return;
+  }
+  if (!selected) { setStatus('Select a plant or decoration first.', 'bad'); return; }
+  placePaletteItem(selected, kind, index);
+}
+
+function handleDragStart(event, kind, index) {
+  if (!layout[kind][index]) { event.preventDefault(); return; }
+  event.dataTransfer.effectAllowed = 'move';
+  event.dataTransfer.setData('application/x-garden-tile', JSON.stringify({ kind, index }));
+}
+
+function handleDrop(event, kind, index) {
+  event.preventDefault();
+  const paletteData = event.dataTransfer.getData('application/x-garden-item');
+  if (paletteData) {
+    const item = JSON.parse(paletteData);
+    placePaletteItem(item, kind, index);
+    return;
+  }
+  const tileData = event.dataTransfer.getData('application/x-garden-tile');
+  if (!tileData) return;
+  const source = JSON.parse(tileData);
+  const sourcePlacement = layout[source.kind][source.index];
+  const targetPlacement = layout[kind][index];
+  const sourceItemKind = placementKind(source.kind, sourcePlacement);
+  const targetItemKind = targetPlacement ? placementKind(kind, targetPlacement) : null;
+  if (!canPlaceOnTile(sourceItemKind, kind) || (targetItemKind && !canPlaceOnTile(targetItemKind, source.kind))) { flashWrong(kind, index, 'Plants can only use dirt tiles.'); return; }
+  if (source.kind === kind && source.index === index) return;
+  mutate(() => {
+    [layout[source.kind][source.index], layout[kind][index]] = [layout[kind][index], layout[source.kind][source.index]];
+  });
+  setStatus('Item moved.', 'good');
+}
+
+function selectPaletteItem(item) {
+  if (item.kind === 'plant' && placementDraft?.id !== item.id) placementDraft = { ...newPlantEntry(item.id), quantity:1 };
+  if (item.kind !== 'plant') placementDraft = null;
+  selected = item;
+  $('selectedName').textContent = item.name;
+  setMode('place');
+  updatePaletteSelection();
+}
+
+function updatePaletteSelection() {
+  $('items').querySelectorAll('.item').forEach(button => {
+    button.classList.toggle('active', Boolean(selected) && button.dataset.kind === selected.kind && button.dataset.id === selected.id);
+  });
+}
+
+function renderPalette() {
+  const query = $('search').value.trim().toLowerCase();
+  const items = CATALOG
+    .filter(item => item.kind === selectedKind && (!query || item.name.toLowerCase().includes(query) || item.id.toLowerCase().includes(query)))
+    .sort((a, b) => a.name.localeCompare(b.name));
+  const container = $('items');
+  container.innerHTML = '';
+  if (!items.length) {
+    container.innerHTML = '<div class="empty-results">No matching items.</div>';
+    return;
+  }
+  items.forEach(item => {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'item' + (selected && selected.kind === item.kind && selected.id === item.id ? ' active' : '');
+    button.dataset.kind = item.kind;
+    button.dataset.id = item.id;
+    button.setAttribute('aria-label', 'Select ' + item.name);
+    button.draggable = true;
+    button.innerHTML = '<img src="' + item.sprite + '" alt="" loading="lazy"><span>' + escapeHtml(item.name) + '</span>';
+    button.addEventListener('click', () => selectPaletteItem(item));
+    button.addEventListener('dragstart', event => {
+      event.dataTransfer.effectAllowed = 'copy';
+      event.dataTransfer.setData('application/x-garden-item', JSON.stringify(item));
+    });
+    container.appendChild(button);
+  });
+}
+
+function renderMutationEditor() {
+  const title = $('mutationTitle');
+  const list = $('mutationList');
+  const sizeEditor = $('plantSizeEditor');
+  const stackEditor = $('plantStackEditor');
+  list.innerHTML = '';
+  const isDraft = mode === 'place' && selected?.kind === 'plant' && placementDraft?.id === selected.id;
+  const tilePlacement = !isDraft && focusedTile?.kind === 'dirt' ? layout.dirt[focusedTile.index] : null;
+  if (!isDraft && (!tilePlacement || placementKind('dirt', tilePlacement) !== 'plant')) {
+    title.textContent = 'Select a plant';
+    sizeEditor.hidden = true;
+    stackEditor.hidden = true;
+    return;
+  }
+  const details = isDraft ? null : stackDetails(tilePlacement);
+  if (!isDraft) focusedPlantIndex = Math.max(0, Math.min(focusedPlantIndex, details.entries.length - 1));
+  const placement = isDraft ? placementDraft : details.entries[focusedPlantIndex];
+  const item = catalogByKey.get('plant:' + placement.id);
+  title.textContent = (isDraft ? 'Place ' : '') + (item ? item.name : placement.id);
+  const stackFamily = isDraft ? item?.stackFamily : details.family;
+  const stackCapacity = isDraft ? item?.stackCapacity || 1 : details.capacity;
+  const stackCount = isDraft ? Math.max(1, Number(placementDraft.quantity) || 1) : details.entries.length;
+  stackEditor.hidden = !stackFamily;
+  stackEditor.classList.toggle('draft', isDraft);
+  $('plantStackPosition').textContent = isDraft ? stackCount + ' plants (max ' + stackCapacity + ')' : (focusedPlantIndex + 1) + ' of ' + stackCount + ' (max ' + stackCapacity + ')';
+  $('previousStackPlant').hidden = isDraft;
+  $('nextStackPlant').hidden = isDraft;
+  $('previousStackPlant').disabled = !isDraft && focusedPlantIndex === 0;
+  $('nextStackPlant').disabled = !isDraft && focusedPlantIndex >= stackCount - 1;
+  $('removeStackPlant').disabled = isDraft && stackCount <= 1;
+  $('addStackPlant').disabled = !stackFamily || stackCount >= stackCapacity;
+  sizeEditor.hidden = false;
+  const maximumScale = Math.max(1, Number(item?.maxScale) || 1);
+  const targetScale = normalizedTargetScale(placement.id, placement.targetScale);
+  const scaleSlider = $('plantScale');
+  scaleSlider.max = String(maximumScale);
+  scaleSlider.value = String(targetScale);
+  scaleSlider.disabled = maximumScale <= 1;
+  $('plantScaleValue').textContent = targetScale.toFixed(2) + 'x';
+  $('plantScaleMax').textContent = maximumScale.toFixed(2) + 'x max';
+  const active = new Set(normalizeMutationSelection(placement.mutations));
+  MUTATIONS.forEach(mutation => {
+    const label = document.createElement('label');
+    label.className = 'mutation-option';
+    const checkbox = document.createElement('input');
+    checkbox.type = 'checkbox';
+    checkbox.checked = active.has(mutation.id);
+    checkbox.addEventListener('change', () => {
+      if (isDraft) {
+        const current = normalizeMutationSelection(placementDraft.mutations);
+        const next = checkbox.checked ? [...current, mutation.id] : current.filter(id => id !== mutation.id);
+        placementDraft.mutations = normalizeMutationSelection(next);
+        renderMutationEditor();
+      } else {
+        const tileIndex = focusedTile.index;
+        const tile = layout.dirt[tileIndex];
+        const entries = plantEntries(tile);
+        const currentEntry = entries[focusedPlantIndex];
+        const current = normalizeMutationSelection(currentEntry.mutations);
+        const next = checkbox.checked ? [...current, mutation.id] : current.filter(id => id !== mutation.id);
+        const mutations = normalizeMutationSelection(next);
+        mutate(() => {
+          layout.dirt[tileIndex] = placementFromPlantEntries(entries.map(entry => ({ ...entry, mutations:[...mutations] })));
+        }, { kind:'dirt', index:tileIndex });
+      }
+    });
+    if (mutation.sprite) {
+      const icon = document.createElement('img');
+      icon.src = mutation.sprite;
+      icon.alt = '';
+      label.append(checkbox, icon);
+    } else label.appendChild(checkbox);
+    const name = document.createElement('span');
+    name.textContent = mutation.name;
+    label.appendChild(name);
+    list.appendChild(label);
+  });
+}
+
+$('plantScale').addEventListener('input', event => {
+  $('plantScaleValue').textContent = Number(event.target.value).toFixed(2) + 'x';
+});
+$('plantScale').addEventListener('change', event => {
+  if (mode === 'place' && selected?.kind === 'plant' && placementDraft?.id === selected.id) {
+    const value = normalizedTargetScale(placementDraft.id, event.target.value);
+    placementDraft.targetScale = value;
+    renderMutationEditor();
+    setStatus('Placement size set to ' + value.toFixed(2) + 'x.', 'good');
+    return;
+  }
+  if (!(focusedTile?.kind === 'dirt' && layout.dirt[focusedTile.index] && placementKind('dirt', layout.dirt[focusedTile.index]) === 'plant')) return;
+  const index = focusedTile.index;
+  const tile = layout.dirt[index];
+  const currentEntry = plantEntries(tile)[focusedPlantIndex];
+  const value = normalizedTargetScale(currentEntry.id, event.target.value);
+  mutate(() => { replacePlantEntry(tile, focusedPlantIndex, { ...currentEntry, targetScale:value }); }, { kind:'dirt', index });
+  setStatus('Plant size set to ' + value.toFixed(2) + 'x.', 'good');
+});
+
+$('previousStackPlant').addEventListener('click', () => {
+  if (mode === 'place') return;
+  focusedPlantIndex = Math.max(0, focusedPlantIndex - 1);
+  renderCell('dirt', focusedTile.index);
+  renderMutationEditor();
+});
+$('nextStackPlant').addEventListener('click', () => {
+  if (mode === 'place') return;
+  const tile = focusedTile?.kind === 'dirt' ? layout.dirt[focusedTile.index] : null;
+  focusedPlantIndex = Math.min(plantEntries(tile).length - 1, focusedPlantIndex + 1);
+  renderCell('dirt', focusedTile.index);
+  renderMutationEditor();
+});
+$('addStackPlant').addEventListener('click', () => {
+  if (mode === 'place' && selected?.kind === 'plant' && placementDraft?.id === selected.id) {
+    const item = catalogByKey.get('plant:' + placementDraft.id);
+    placementDraft.quantity = Math.min(item?.stackCapacity || 1, (Number(placementDraft.quantity) || 1) + 1);
+    renderMutationEditor();
+    return;
+  }
+  const tile = focusedTile?.kind === 'dirt' ? layout.dirt[focusedTile.index] : null;
+  if (!tile) return;
+  const details = stackDetails(tile);
+  if (!details.family || details.entries.length >= details.capacity) return;
+  const duplicate = clone(details.entries[focusedPlantIndex]);
+  focusedPlantIndex = details.entries.length;
+  mutate(() => {
+    layout.dirt[focusedTile.index].stack ||= [];
+    layout.dirt[focusedTile.index].stack.push(duplicate);
+  }, { kind:'dirt', index:focusedTile.index });
+  setStatus('Plant added to the patch (' + (details.entries.length + 1) + ' / ' + details.capacity + ').', 'good');
+});
+$('removeStackPlant').addEventListener('click', () => {
+  if (mode === 'place' && selected?.kind === 'plant' && placementDraft?.id === selected.id) {
+    placementDraft.quantity = Math.max(1, (Number(placementDraft.quantity) || 1) - 1);
+    renderMutationEditor();
+    return;
+  }
+  const index = focusedTile?.kind === 'dirt' ? focusedTile.index : -1;
+  const tile = index >= 0 ? layout.dirt[index] : null;
+  if (!tile || placementKind('dirt', tile) !== 'plant') return;
+  const entries = plantEntries(tile);
+  entries.splice(focusedPlantIndex, 1);
+  focusedPlantIndex = Math.max(0, Math.min(focusedPlantIndex, entries.length - 1));
+  mutate(() => { layout.dirt[index] = placementFromPlantEntries(entries); }, { kind:'dirt', index });
+  setStatus(entries.length ? 'Plant removed from the patch.' : 'Tile cleared.', 'good');
+});
+
+function escapeHtml(value) {
+  return String(value).replace(/[&<>"']/g, char => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' })[char]);
+}
+
+function setPaletteKind(kind) {
+  selectedKind = kind;
+  $('plantsTab').classList.toggle('active', kind === 'plant');
+  $('decorTab').classList.toggle('active', kind === 'decor');
+  $('plantsTab').setAttribute('aria-selected', String(kind === 'plant'));
+  $('decorTab').setAttribute('aria-selected', String(kind === 'decor'));
+  $('search').placeholder = kind === 'plant' ? 'Search plants' : 'Search decorations';
+  renderPalette();
+}
+
+function normalizeImportedLayout(data) {
+  if (data && [1, 2, 3, 4].includes(data.version) && Array.isArray(data.dirt) && Array.isArray(data.boardwalk)) {
+    return {
+      dirt:Array.from({ length:200 }, (_, index) => {
+        const placement = data.dirt[index];
+        if (!placement) return null;
+        return placement.kind === 'decor'
+          ? { kind:'decor', id:placement.id, flipH:Boolean(placement.flipH) }
+          : normalizedPlantPlacement(placement);
+      }),
+      boardwalk:Array.from({ length:76 }, (_, index) => {
+        const placement = data.boardwalk[index];
+        return placement ? { kind:'decor', id:placement.id, flipH:Boolean(placement.flipH) } : null;
+      }),
+    };
+  }
+  const garden = data && (data.garden || data.data?.garden);
+  if (!garden) throw new Error('No garden data was found in this file.');
+  const next = { dirt:Array(200).fill(null), boardwalk:Array(76).fill(null) };
+  let skipped = 0;
+  const dirtObjects = garden.tileObjects || garden;
+  for (const [indexText, object] of Object.entries(dirtObjects)) {
+    const index = Number(indexText);
+    const isDecor = object && object.objectType === 'decor' && object.decorId;
+    const isPlant = object && (object.objectType === 'plant' || (!object.objectType && object.species));
+    if (index < 0 || index >= 200) { if (object) skipped++; continue; }
+    if (isDecor) {
+      if (!catalogByKey.has('decor:' + object.decorId)) { skipped++; continue; }
+      next.dirt[index] = { kind:'decor', id:object.decorId, flipH:false };
+      continue;
+    }
+    if (!isPlant || !catalogByKey.has('plant:' + object.species)) { if (object) skipped++; continue; }
+    const slots = object.slots || [];
+    const baseItem = catalogByKey.get('plant:' + object.species);
+    if (baseItem?.stackFamily) {
+      const entries = (slots.length ? slots : [{ species:object.species, mutations:object.mutations, targetScale:object.targetScale }])
+        .map(slot => normalizedPlantEntry({ id:slot.species || object.species, mutations:slot.mutations, targetScale:slot.targetScale }))
+        .filter(entry => catalogByKey.get('plant:' + entry.id)?.stackFamily === baseItem.stackFamily)
+        .slice(0, baseItem.stackCapacity);
+      next.dirt[index] = placementFromPlantEntries(entries.length ? entries : [normalizedPlantEntry({ id:object.species })]);
+      continue;
+    }
+    const mutations = normalizeMutationSelection([...new Set(slots.flatMap(slot => Array.isArray(slot.mutations) ? slot.mutations : []))]);
+    const importedScale = slots.find(slot => Number.isFinite(Number(slot.targetScale)))?.targetScale ?? object.targetScale;
+    next.dirt[index] = { id:object.species, mutations, targetScale:normalizedTargetScale(object.species, importedScale) };
+  }
+  const boardwalkObjects = garden.boardwalkTileObjects || data.boardwalk || {};
+  for (const [indexText, object] of Object.entries(boardwalkObjects)) {
+    const index = Number(indexText);
+    const isDecor = object && (object.objectType === 'decor' || (!object.objectType && object.decorId));
+    if (!isDecor || !catalogByKey.has('decor:' + object.decorId) || index < 0 || index >= 76) { if (object) skipped++; continue; }
+    next.boardwalk[index] = { kind:'decor', id:object.decorId, flipH:false };
+  }
+  return { ...next, skipped };
+}
+
+const farmGrabText = $('farmGrabScript').textContent.trim();
+$('farmGrabCode').value = farmGrabText;
+$('openLoad').addEventListener('click', () => {
+  $('loadDialogStatus').textContent = '';
+  $('loadDialogStatus').className = 'dialog-status';
+  $('loadDialog').showModal();
+});
+$('closeLoad').addEventListener('click', () => $('loadDialog').close());
+$('loadDialog').addEventListener('click', event => {
+  if (event.target === $('loadDialog')) $('loadDialog').close();
+});
+$('copyFarmCode').addEventListener('click', async () => {
+  const dialogStatus = $('loadDialogStatus');
+  try {
+    await navigator.clipboard.writeText(farmGrabText);
+    dialogStatus.textContent = 'Code copied.';
+    dialogStatus.className = 'dialog-status good';
+  } catch (_) {
+    const code = $('farmGrabCode');
+    code.focus();
+    code.select();
+    document.execCommand('copy');
+    dialogStatus.textContent = 'Code copied.';
+    dialogStatus.className = 'dialog-status good';
+  }
+});
+
+$('placeMode').addEventListener('click', () => setMode('place'));
+$('moveMode').addEventListener('click', () => setMode('move'));
+$('mutateMode').addEventListener('click', () => setMode('mutate'));
+$('eraseMode').addEventListener('click', () => setMode('erase'));
+$('plantsTab').addEventListener('click', () => setPaletteKind('plant'));
+$('decorTab').addEventListener('click', () => setPaletteKind('decor'));
+$('search').addEventListener('input', renderPalette);
+$('slotLabels').addEventListener('click', () => {
+  const active = farm.classList.toggle('show-slots');
+  $('slotLabels').classList.toggle('active', active);
+});
+$('flip').addEventListener('click', () => {
+  if (!focusedTile) return;
+  const focusedPlacement = layout[focusedTile.kind]?.[focusedTile.index];
+  if (!focusedPlacement || placementKind(focusedTile.kind, focusedPlacement) !== 'decor') return;
+  mutate(() => {
+    const placement = layout[focusedTile.kind][focusedTile.index];
+    placement.flipH = !placement.flipH;
+  }, { kind:focusedTile.kind, index:focusedTile.index });
+  setStatus('Decoration flipped.', 'good');
+});
+$('undo').addEventListener('click', () => {
+  if (!history.length) return;
+  future.push(JSON.stringify(layout));
+  layout = JSON.parse(history.pop());
+  moveSource = null;
+  persist();
+  renderBoard();
+  setStatus('Undid the last change.');
+});
+$('redo').addEventListener('click', () => {
+  if (!future.length) return;
+  history.push(JSON.stringify(layout));
+  layout = JSON.parse(future.pop());
+  moveSource = null;
+  persist();
+  renderBoard();
+  setStatus('Redid the last change.');
+});
+$('clear').addEventListener('click', () => {
+  if (!confirm('Clear every plant and decoration from this layout?')) return;
+  focusedTile = null;
+  moveSource = null;
+  mutate(() => { layout = { dirt:Array(200).fill(null), boardwalk:Array(76).fill(null) }; });
+  setStatus('Layout cleared.');
+});
+$('save').addEventListener('click', () => {
+  const output = { version:4, savedAt:new Date().toISOString(), dirt:layout.dirt, boardwalk:layout.boardwalk };
+  const url = URL.createObjectURL(new Blob([JSON.stringify(output, null, 2)], { type:'application/json' }));
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = 'magic-garden-layout.json';
+  link.click();
+  setTimeout(() => URL.revokeObjectURL(url), 0);
+  setStatus('Layout JSON saved.', 'good');
+});
+$('loadFile').addEventListener('change', async event => {
+  const file = event.target.files && event.target.files[0];
+  if (!file) return;
+  try {
+    const imported = normalizeImportedLayout(JSON.parse(await file.text()));
+    history.push(JSON.stringify(layout));
+    future = [];
+    layout = { dirt:imported.dirt, boardwalk:imported.boardwalk };
+    persist();
+    renderBoard();
+    setStatus('Layout loaded' + (imported.skipped ? '; ' + imported.skipped + ' unsupported object(s) skipped.' : '.'), imported.skipped ? '' : 'good');
+    $('loadDialogStatus').textContent = 'Farm loaded.';
+    $('loadDialogStatus').className = 'dialog-status good';
+    setTimeout(() => $('loadDialog').close(), 350);
+  } catch (error) {
+    setStatus(error.message || 'Could not load that JSON file.', 'bad');
+    $('loadDialogStatus').textContent = error.message || 'Could not load that file.';
+    $('loadDialogStatus').className = 'dialog-status bad';
+  } finally {
+    event.target.value = '';
+  }
+});
+
+try {
+  const saved = JSON.parse(localStorage.getItem(STORAGE_KEY));
+  if (saved && saved.dirt?.length === 200 && saved.boardwalk?.length === 76) {
+    layout = {
+      dirt:saved.dirt.map(placement => !placement ? null : placement.kind === 'decor' ? {
+        kind:'decor', id:placement.id, flipH:Boolean(placement.flipH),
+      } : normalizedPlantPlacement(placement)),
+      boardwalk:saved.boardwalk.map(placement => placement ? { ...placement, kind:'decor' } : null),
+    };
+  }
+} catch (_) {}
+renderBoard();
+renderPalette();
+</script>
+</body>
+</html>
