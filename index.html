@@ -96,7 +96,7 @@
   .item span { position:absolute; left:5px; right:5px; bottom:5px; overflow:hidden; color:var(--text); font-size:10px; line-height:1.15; text-align:center; text-overflow:ellipsis; white-space:nowrap; }
   .empty-results { grid-column:1 / -1; padding:20px 4px; color:var(--dim); font-size:12px; text-align:center; }
   .palette-controls[hidden] { display:none; }
-  .mutation-editor { min-height:290px; }
+  .mutation-editor { flex:0 0 auto; min-height:290px; }
   .palette-controls { order:2; }
   .mutation-title { margin:0 0 2px; font-size:14px; }
   .mutation-sub { margin:0 0 12px; color:var(--dim); font-size:11px; }
@@ -112,7 +112,9 @@
   .plant-size output { color:var(--accent); font-weight:700; }
   .plant-size input { display:block; width:100%; accent-color:var(--accent); cursor:pointer; }
   .plant-size-limits { display:flex; justify-content:space-between; margin-top:2px; color:var(--faint); font-size:9px; }
-  .pet-editor { margin-top:16px; padding-top:14px; border-top:1px solid var(--line); }
+  .pet-editor { flex:0 0 auto; margin-top:16px; padding-top:14px; border-top:1px solid var(--line); }
+  .farm-pet-editor { padding:14px; border:1px solid var(--line); border-radius:8px; background:var(--panel); }
+  .farm-pet-editor .pet-slots { grid-template-columns:repeat(3,minmax(0,1fr)); }
   .pet-editor-head { display:flex; align-items:center; justify-content:space-between; gap:8px; margin-bottom:8px; }
   .pet-editor-head h2 { margin:0; }
   .pet-add { min-height:30px; padding:4px 8px; }
@@ -187,6 +189,7 @@
     .mutation-list { grid-template-columns:repeat(2,minmax(0,1fr)); }
     .dialog-head, .dialog-body { padding-left:12px; padding-right:12px; }
     .console-code { min-height:150px; }
+    .farm-pet-editor .pet-slots { grid-template-columns:1fr; }
     .calc-link { flex-basis:100%; max-width:none; }
   }
 </style>
@@ -241,13 +244,6 @@
         </div>
         <div id="mutationList" class="mutation-list"></div>
       </div>
-      <section class="pet-editor" aria-labelledby="petsTitle">
-        <div class="pet-editor-head">
-          <h2 id="petsTitle">Pets</h2>
-          <button id="addPet" class="btn pet-add" type="button">Add pet</button>
-        </div>
-        <div id="petSlots" class="pet-slots"></div>
-      </section>
     </aside>
 
     <section class="farm-column" aria-label="Garden layout">
@@ -261,6 +257,13 @@
         <span class="swatch wood">Boardwalk: decorations only</span>
         <span>Drag placed items to move or swap them.</span>
       </div>
+      <section class="pet-editor farm-pet-editor" aria-labelledby="petsTitle">
+        <div class="pet-editor-head">
+          <h2 id="petsTitle">Pets</h2>
+          <button id="addPet" class="btn pet-add" type="button">Add pet</button>
+        </div>
+        <div id="petSlots" class="pet-slots"></div>
+      </section>
     </section>
 
     <aside class="palette">
