@@ -326,23 +326,87 @@
 // Downloads magicgarden-farm.txt for the layout planner.
 (async () => {
   const w = window;
+  // Which userSlot is ours. Nothing in the state says so any more: the socket url dropped its
+  // playerId parameter, selfPlayerId is gone from the room and the game, and every occupied slot
+  // carries the same fields, so there is nothing to tell them apart by.
+  //
+  // The game does know. Welcome puts the id in a jotai atom, but jotai keeps values in a store the
+  // page cannot reach. Derived atoms are the way in: myUserSlotIdxAtom recomputes on every state
+  // patch, and jotai passes its read function its own getter, which reads any atom. Borrowing that
+  // getter for a single patch answers the question outright, with nothing else installed.
+  function ownSlotFromAtoms(timeoutMs) {
+    return new Promise(resolve => {
+      const atoms = {};
+      try {
+        const raw = globalThis.jotaiAtomCache;
+        const cache = raw instanceof Map ? raw : raw?.cache;
+        cache?.forEach(atom => { if (atom?.debugLabel) atoms[atom.debugLabel] = atom; });
+      } catch (_) {}
+      const slotAtom = atoms.myUserSlotIdxAtom;
+      if (typeof slotAtom?.read !== 'function') { resolve(null); return; }
+      const original = slotAtom.read;
+      let settled = false;
+      const finish = value => {
+        if (settled) return;
+        settled = true;
+        slotAtom.read = original; // always hand the game back exactly what it had
+        resolve(value);
+      };
+      slotAtom.read = function (get, ...rest) {
+        const value = original.call(this, get, ...rest);
+        if (!settled) {
+          let pid = null;
+          try { pid = get(atoms.playerIdAtom); } catch (_) {}
+          finish({ slotIndex: value, playerId: pid });
+        }
+        return value;
+      };
+      setTimeout(() => finish(null), timeoutMs || 6000);
+    });
+  }
+
+  function pickMySlot(conn, full, own) {
+    const slots = full?.child?.data?.userSlots || [];
+    if (!slots.length) return null;
+    if (Number.isInteger(own?.slotIndex) && slots[own.slotIndex]?.data?.garden) return slots[own.slotIndex];
+    let pid = own?.playerId || null;
+    const gc = window.__gardenCompanionState;
+    if (gc) {
+      if (Number.isInteger(gc.slotIndex) && slots[gc.slotIndex]?.data?.garden) return slots[gc.slotIndex];
+      pid = pid || gc.playerId || null;
+    }
+    const ownIdx = window.__gardenCompanionFarmSystems?.ownUserSlotIdx;
+    if (Number.isInteger(ownIdx) && slots[ownIdx]?.data?.garden) return slots[ownIdx];
+    if (!pid) {
+      try {
+        pid = new URL(conn.currentWebSocket.url).searchParams.get('playerId');
+        if (pid && pid[0] === '"') pid = JSON.parse(pid);
+      } catch (_) {}
+    }
+    if (pid) {
+      const byId = slots.find(entry => entry?.playerId === pid);
+      if (byId) return byId;
+    }
+    // A single occupied slot can only be yours. In a lobby there is no such certainty, so this
+    // gives up rather than exporting whichever farm the server happened to list first.
+    const occupied = slots.filter(entry => entry?.data?.garden);
+    return occupied.length === 1 ? occupied[0] : null;
+  }
+
   async function getState() {
     let data = w.playerSlot?.data || w._wsState?.mySlot?.data || w.myGarden;
     if (data?.garden) return data;
     const conn = w.MagicCircle_RoomConnection;
     if (conn?.subscribeToPatches) {
       console.log('Grabbing room state...');
+      const own = await ownSlotFromAtoms();
       return await new Promise(resolve => {
         let done = false;
+        // Without an id there is nothing to wait for, so give up rather than hang forever.
+        setTimeout(() => { if (!done) { done = true; resolve(null); } }, 8000);
         conn.subscribeToPatches((_patches, full) => {
           if (done) return;
-          const slots = full?.child?.data?.userSlots || [];
-          let playerId = null;
-          try {
-            playerId = new URL(conn.currentWebSocket.url).searchParams.get('playerId');
-            if (playerId && playerId[0] === '"') playerId = JSON.parse(playerId);
-          } catch (_) {}
-          const slot = slots.find(entry => entry && (entry.playerId === playerId || entry.data?.playerId === playerId)) || slots.find(entry => entry?.data?.garden);
+          const slot = pickMySlot(conn, full, own);
           if (slot?.data) { done = true; resolve(slot.data); }
         });
       });
@@ -350,7 +414,7 @@
     return null;
   }
   const data = await getState();
-  if (!data?.garden) { console.error('[GardenLayout] No garden data found. Is the game loaded?'); return; }
+  if (!data?.garden) { console.error('[GardenLayout] Could not tell which farm is yours. In a room with other players this needs the Garden Companion userscript running; on your own, just make sure the game has finished loading.'); return; }
   const garden = {};
   for (const [tileId, tile] of Object.entries(data.garden.tileObjects || {})) {
     if (tile.objectType === 'plant' && tile.slots?.length) {
